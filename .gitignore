@@ -1,0 +1,7 @@
+
+venv310/
+*.exe
+*.zip
+*.dll
+*.dat
+__pycache__/
