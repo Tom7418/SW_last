@@ -21,13 +21,11 @@ import json
 from sklearn.feature_extraction import FeatureHasher
 
 LIEF_MAJOR, LIEF_MINOR, _ = lief.__version__.split('.')
-LIEF_EXPORT_OBJECT = int(LIEF_MAJOR) > 0 or ( int(LIEF_MAJOR)==0 and int(LIEF_MINOR) >= 10 )
+LIEF_EXPORT_OBJECT = int(LIEF_MAJOR) > 0 or (int(LIEF_MAJOR) == 0 and int(LIEF_MINOR) >= 10)
 LIEF_HAS_SIGNATURE = int(LIEF_MAJOR) > 0 or (int(LIEF_MAJOR) == 0 and int(LIEF_MINOR) >= 11)
 
 
 class FeatureType(object):
-    ''' Base class from which each feature type may inherit '''
-
     name = ''
     dim = 0
 
@@ -35,22 +33,16 @@ class FeatureType(object):
         return '{}({})'.format(self.name, self.dim)
 
     def raw_features(self, bytez, lief_binary):
-        ''' Generate a JSON-able representation of the file '''
-        raise (NotImplementedError)
+        raise NotImplementedError
 
     def process_raw_features(self, raw_obj):
-        ''' Generate a feature vector from the raw features '''
-        raise (NotImplementedError)
+        raise NotImplementedError
 
     def feature_vector(self, bytez, lief_binary):
-        ''' Directly calculate the feature vector from the sample itself. This should only be implemented differently
-        if there are significant speedups to be gained from combining the two functions. '''
         return self.process_raw_features(self.raw_features(bytez, lief_binary))
 
 
 class ByteHistogram(FeatureType):
-    ''' Byte histogram (count + non-normalized) over the entire binary file '''
-
     name = 'histogram'
     dim = 256
 
@@ -62,18 +54,13 @@ class ByteHistogram(FeatureType):
         return counts.tolist()
 
     def process_raw_features(self, raw_obj):
-        counts = np.array(raw_obj, dtype=np.float32)
-        sum = counts.sum()
-        normalized = counts / sum
+        counts = np.array(raw_obj, dtype=float)
+        sum_val = counts.sum()
+        normalized = counts / sum_val
         return normalized
 
 
 class ByteEntropyHistogram(FeatureType):
-    ''' 2d byte/entropy histogram based loosely on (Saxe and Berlin, 2015).
-    This roughly approximates the joint probability of byte value and local entropy.
-    See Section 2.1.1 in https://arxiv.org/pdf/1508.03096.pdf for more info.
-    '''
-
     name = 'byteentropy'
     dim = 256
 
@@ -83,50 +70,38 @@ class ByteEntropyHistogram(FeatureType):
         self.step = step
 
     def _entropy_bin_counts(self, block):
-        # coarse histogram, 16 bytes per bin
-        c = np.bincount(block >> 4, minlength=16)  # 16-bin histogram
-        p = c.astype(np.float32) / self.window
+        c = np.bincount(block >> 4, minlength=16)
+        p = c.astype(float) / self.window
         wh = np.where(c)[0]
-        H = np.sum(-p[wh] * np.log2(
-            p[wh])) * 2  # * x2 b.c. we reduced information by half: 256 bins (8 bits) to 16 bins (4 bits)
-
-        Hbin = int(H * 2)  # up to 16 bins (max entropy is 8 bits)
-        if Hbin == 16:  # handle entropy = 8.0 bits
+        H = np.sum(-p[wh] * np.log2(p[wh])) * 2
+        Hbin = int(H * 2)
+        if Hbin == 16:
             Hbin = 15
-
         return Hbin, c
 
     def raw_features(self, bytez, lief_binary):
-        output = np.zeros((16, 16), dtype=np.int)
+        output = np.zeros((16, 16), dtype=int)
         a = np.frombuffer(bytez, dtype=np.uint8)
         if a.shape[0] < self.window:
             Hbin, c = self._entropy_bin_counts(a)
             output[Hbin, :] += c
         else:
-            # strided trick from here: http://www.rigtorp.se/2011/01/01/rolling-statistics-numpy.html
             shape = a.shape[:-1] + (a.shape[-1] - self.window + 1, self.window)
             strides = a.strides + (a.strides[-1],)
             blocks = np.lib.stride_tricks.as_strided(a, shape=shape, strides=strides)[::self.step, :]
-
-            # from the blocks, compute histogram
             for block in blocks:
                 Hbin, c = self._entropy_bin_counts(block)
                 output[Hbin, :] += c
-
         return output.flatten().tolist()
 
     def process_raw_features(self, raw_obj):
-        counts = np.array(raw_obj, dtype=np.float32)
-        sum = counts.sum()
-        normalized = counts / sum
+        counts = np.array(raw_obj, dtype=float)
+        sum_val = counts.sum()
+        normalized = counts / sum_val
         return normalized
 
 
 class SectionInfo(FeatureType):
-    ''' Information about section names, sizes and entropy.  Uses hashing trick
-    to summarize all this section info into a feature vector.
-    '''
-
     name = 'section'
     dim = 5 + 50 + 50 + 50 + 50 + 50
 
@@ -141,23 +116,20 @@ class SectionInfo(FeatureType):
         if lief_binary is None:
             return {"entry": "", "sections": []}
 
-        # properties of entry point, or if invalid, the first executable section
-
         try:
             if int(LIEF_MAJOR) > 0 or (int(LIEF_MAJOR) == 0 and int(LIEF_MINOR) >= 12):
                 section = lief_binary.section_from_rva(lief_binary.entrypoint - lief_binary.imagebase)
                 if section is None:
                     raise lief.not_found
                 entry_section = section.name
-            else: # lief < 0.12
+            else:
                 entry_section = lief_binary.section_from_offset(lief_binary.entrypoint).name
         except lief.not_found:
-                # bad entry point, let's find the first executable section
-                entry_section = ""
-                for s in lief_binary.sections:
-                    if lief.PE.SECTION_CHARACTERISTICS.MEM_EXECUTE in s.characteristics_lists:
-                        entry_section = s.name
-                        break
+            entry_section = ""
+            for s in lief_binary.sections:
+                if lief.PE.SECTION_CHARACTERISTICS.MEM_EXECUTE in s.characteristics_lists:
+                    entry_section = s.name
+                    break
 
         raw_obj = {"entry": entry_section}
         raw_obj["sections"] = [{
@@ -172,17 +144,12 @@ class SectionInfo(FeatureType):
     def process_raw_features(self, raw_obj):
         sections = raw_obj['sections']
         general = [
-            len(sections),  # total number of sections
-            # number of sections with zero size
+            len(sections),
             sum(1 for s in sections if s['size'] == 0),
-            # number of sections with an empty name
             sum(1 for s in sections if s['name'] == ""),
-            # number of RX
             sum(1 for s in sections if 'MEM_READ' in s['props'] and 'MEM_EXECUTE' in s['props']),
-            # number of W
             sum(1 for s in sections if 'MEM_WRITE' in s['props'])
         ]
-        # gross characteristics of each section
         section_sizes = [(s['name'], s['size']) for s in sections]
         section_sizes_hashed = FeatureHasher(50, input_type="pair").transform([section_sizes]).toarray()[0]
         section_entropy = [(s['name'], s['entropy']) for s in sections]
@@ -194,17 +161,12 @@ class SectionInfo(FeatureType):
         characteristics_hashed = FeatureHasher(50, input_type="string").transform([characteristics]).toarray()[0]
 
         return np.hstack([
-            general, section_sizes_hashed, section_entropy_hashed, section_vsize_hashed, entry_name_hashed,
-            characteristics_hashed
+            general, section_sizes_hashed, section_entropy_hashed, section_vsize_hashed,
+            entry_name_hashed, characteristics_hashed
         ]).astype(np.float32)
 
 
 class ImportsInfo(FeatureType):
-    ''' Information about imported libraries and functions from the
-    import address table.  Note that the total number of imported
-    functions is contained in GeneralFileInfo.
-    '''
-
     name = 'imports'
     dim = 1280
 
@@ -218,36 +180,23 @@ class ImportsInfo(FeatureType):
 
         for lib in lief_binary.imports:
             if lib.name not in imports:
-                imports[lib.name] = []  # libraries can be duplicated in listing, extend instead of overwrite
-
-            # Clipping assumes there are diminishing returns on the discriminatory power of imported functions
-            #  beyond the first 10000 characters, and this will help limit the dataset size
+                imports[lib.name] = []
             for entry in lib.entries:
                 if entry.is_ordinal:
                     imports[lib.name].append("ordinal" + str(entry.ordinal))
                 else:
                     imports[lib.name].append(entry.name[:10000])
-
         return imports
 
     def process_raw_features(self, raw_obj):
-        # unique libraries
         libraries = list(set([l.lower() for l in raw_obj.keys()]))
         libraries_hashed = FeatureHasher(256, input_type="string").transform([libraries]).toarray()[0]
-
-        # A string like "kernel32.dll:CreateFileMappingA" for each imported function
         imports = [lib.lower() + ':' + e for lib, elist in raw_obj.items() for e in elist]
         imports_hashed = FeatureHasher(1024, input_type="string").transform([imports]).toarray()[0]
-
-        # Two separate elements: libraries (alone) and fully-qualified names of imported functions
         return np.hstack([libraries_hashed, imports_hashed]).astype(np.float32)
 
 
 class ExportsInfo(FeatureType):
-    ''' Information about exported functions. Note that the total number of exported
-    functions is contained in GeneralFileInfo.
-    '''
-
     name = 'exports'
     dim = 128
 
@@ -257,17 +206,10 @@ class ExportsInfo(FeatureType):
     def raw_features(self, bytez, lief_binary):
         if lief_binary is None:
             return []
-
-        # Clipping assumes there are diminishing returns on the discriminatory power of exports beyond
-        #  the first 10000 characters, and this will help limit the dataset size
         if LIEF_EXPORT_OBJECT:
-            # export is an object with .name attribute (0.10.0 and later)
             clipped_exports = [export.name[:10000] for export in lief_binary.exported_functions]
         else:
-            # export is a string (LIEF 0.9.0 and earlier)
             clipped_exports = [export[:10000] for export in lief_binary.exported_functions]
-
-
         return clipped_exports
 
     def process_raw_features(self, raw_obj):
@@ -276,8 +218,6 @@ class ExportsInfo(FeatureType):
 
 
 class GeneralFileInfo(FeatureType):
-    ''' General information about the file '''
-
     name = 'general'
     dim = 10
 
@@ -317,13 +257,10 @@ class GeneralFileInfo(FeatureType):
             raw_obj['size'], raw_obj['vsize'], raw_obj['has_debug'], raw_obj['exports'], raw_obj['imports'],
             raw_obj['has_relocations'], raw_obj['has_resources'], raw_obj['has_signature'], raw_obj['has_tls'],
             raw_obj['symbols']
-        ],
-                          dtype=np.float32)
+        ], dtype=np.float32)
 
 
 class HeaderFileInfo(FeatureType):
-    ''' Machine, architecure, OS, linker and other information extracted from header '''
-
     name = 'header'
     dim = 62
 
@@ -331,23 +268,24 @@ class HeaderFileInfo(FeatureType):
         super(FeatureType, self).__init__()
 
     def raw_features(self, bytez, lief_binary):
-        raw_obj = {}
-        raw_obj['coff'] = {'timestamp': 0, 'machine': "", 'characteristics': []}
-        raw_obj['optional'] = {
-            'subsystem': "",
-            'dll_characteristics': [],
-            'magic': "",
-            'major_image_version': 0,
-            'minor_image_version': 0,
-            'major_linker_version': 0,
-            'minor_linker_version': 0,
-            'major_operating_system_version': 0,
-            'minor_operating_system_version': 0,
-            'major_subsystem_version': 0,
-            'minor_subsystem_version': 0,
-            'sizeof_code': 0,
-            'sizeof_headers': 0,
-            'sizeof_heap_commit': 0
+        raw_obj = {
+            'coff': {'timestamp': 0, 'machine': "", 'characteristics': []},
+            'optional': {
+                'subsystem': "",
+                'dll_characteristics': [],
+                'magic': "",
+                'major_image_version': 0,
+                'minor_image_version': 0,
+                'major_linker_version': 0,
+                'minor_linker_version': 0,
+                'major_operating_system_version': 0,
+                'minor_operating_system_version': 0,
+                'major_subsystem_version': 0,
+                'minor_subsystem_version': 0,
+                'sizeof_code': 0,
+                'sizeof_headers': 0,
+                'sizeof_heap_commit': 0
+            }
         }
         if lief_binary is None:
             return raw_obj
@@ -364,10 +302,8 @@ class HeaderFileInfo(FeatureType):
         raw_obj['optional']['minor_image_version'] = lief_binary.optional_header.minor_image_version
         raw_obj['optional']['major_linker_version'] = lief_binary.optional_header.major_linker_version
         raw_obj['optional']['minor_linker_version'] = lief_binary.optional_header.minor_linker_version
-        raw_obj['optional'][
-            'major_operating_system_version'] = lief_binary.optional_header.major_operating_system_version
-        raw_obj['optional'][
-            'minor_operating_system_version'] = lief_binary.optional_header.minor_operating_system_version
+        raw_obj['optional']['major_operating_system_version'] = lief_binary.optional_header.major_operating_system_version
+        raw_obj['optional']['minor_operating_system_version'] = lief_binary.optional_header.minor_operating_system_version
         raw_obj['optional']['major_subsystem_version'] = lief_binary.optional_header.major_subsystem_version
         raw_obj['optional']['minor_subsystem_version'] = lief_binary.optional_header.minor_subsystem_version
         raw_obj['optional']['sizeof_code'] = lief_binary.optional_header.sizeof_code

@@ -1,5 +1,3 @@
-LICENSE.txt
-README.md
 setup.py
 ember/__init__.py
 ember/features.py

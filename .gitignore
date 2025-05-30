@@ -4,4 +4,5 @@ venv310/
 *.zip
 *.dll
 *.dat
+.venv/
 __pycache__/
