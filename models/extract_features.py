@@ -1,29 +1,31 @@
-# extract_features.py
-import argparse
-import json
+# extract_benign_from_samples.py
 import os
-import lief
+import json
 from ember.features import PEFeatureExtractor
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--input', type=str, required=True, help='Input .exe file path')
-    parser.add_argument('--output', type=str, required=True, help='Output .json path')
-    parser.add_argument('--kind', type=str, default="train", help='Kind: train/test/predict')
-    args = parser.parse_args()
+input_dir = "models/samples"
+output_dir = "jsons/benign"
 
-    # 파일 읽기
-    with open(args.input, 'rb') as f:
-        bytez = f.read()
+extractor = PEFeatureExtractor(feature_version=2)
+os.makedirs(output_dir, exist_ok=True)
 
-    extractor = PEFeatureExtractor(feature_version=2)
-    features = extractor.raw_features(bytez)
+count = 0
+for filename in os.listdir(input_dir):
+    if filename.lower().endswith(".exe"):
+        input_path = os.path.join(input_dir, filename)
+        output_path = os.path.join(output_dir, filename + ".json")
 
-    os.makedirs(os.path.dirname(args.output), exist_ok=True)
-    with open(args.output, 'w') as f:
-        json.dump(features, f)
+        try:
+            with open(input_path, "rb") as f:
+                bytez = f.read()
+            features = extractor.raw_features(bytez)
 
-    print(f"✅ Features extracted to {args.output}")
+            with open(output_path, "w", encoding="utf-8") as out:
+                json.dump(features, out)
 
-if __name__ == '__main__':
-    main()
+            count += 1
+            print(f"[{count:03}] ✅ {filename} → {output_path}")
+        except Exception as e:
+            print(f"[ERR] ❌ {filename}: {e}")
+
+print(f"\n🎉 총 {count}개 benign 샘플 특징 추출 완료!")

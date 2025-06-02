@@ -4,6 +4,7 @@ venv310/
 *.zip
 *.dll
 *.dat
+*.json
 .venv/
 __pycache__/
 jsons/
