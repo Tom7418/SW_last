@@ -1,66 +1,144 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>랜섬웨어 탐지기</title>
-    <style>
-        body { font-family: sans-serif; }
-        .dropzone {
-            border: 3px dashed #999;
-            padding: 50px;
-            text-align: center;
-            color: #666;
-            background-color: #f9f9f9;
-            margin-bottom: 20px;
-            cursor: pointer;
-        }
-        .dropzone.dragover {
-            background-color: #e0f0ff;
-            border-color: #3c8dbc;
-            color: #3c8dbc;
-        }
-    </style>
+  <meta charset="UTF-8" />
+
+  <!-- CSP 완화: inline-script, eval 허용 (개발용 방편) -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'">
+
+  <title>랜섬웨어 탐지기 (AI 기반)</title>
+
+  <style>
+    body {
+      font-family: sans-serif;
+      margin: 20px auto;
+      max-width: 800px;
+    }
+    .dropzone {
+      border: 3px dashed #999;
+      padding: 50px;
+      text-align: center;
+      color: #666;
+      background-color: #fafafa;
+      cursor: pointer;
+      margin-bottom: 20px;
+    }
+    .dropzone.dragover {
+      background-color: #eef5ff;
+      border-color: #3c8dbc;
+      color: #3c8dbc;
+    }
+    .result-item {
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-bottom: 10px;
+      border-radius: 4px;
+      background-color: #fdfdfd;
+    }
+    .result-item .malicious {
+      color: #d9534f; /* red */
+      font-weight: bold;
+    }
+    .result-item .benign {
+      color: #5cb85c; /* green */
+      font-weight: bold;
+    }
+  </style>
+
+  <!-- ★★★ 테스트용 eval 스크립트 삽입 ★★★ -->
+  <script>
+    try {
+      const result = eval("2 + 3");
+      console.log("✅ eval 테스트 성공, 2+3 =", result);
+    } catch (e) {
+      console.error("❌ eval 차단 오류:", e);
+    }
+  </script>
+  <!-- ★★★ 여기까지 테스트용 코드 ★★★ -->
+
 </head>
 <body>
-    <h2>🔍 랜섬웨어 탐지기</h2>
+  <h2>🔍 랜섬웨어 탐지기 (AI 기반)</h2>
+  <p style="color: #b33;">
+    <strong>⚠️ 주의:</strong>
+    파일 분석은 서버(컨테이너) 내부에서만 이루어집니다. 사용자 PC에 악성 코드가 절대 저장·실행되지 않습니다!
+  </p>
 
-    <div class="dropzone" id="dropzone">
-        📂 여기로 .zip 파일을 드래그하거나 클릭하여 업로드하세요
-        <form id="upload-form" method="POST" enctype="multipart/form-data">
-            <input type="file" name="file" id="file-input" style="display:none;" required>
-        </form>
-    </div>
+  <!-- 드래그 앤 드롭 업로드 영역 -->
+  <div class="dropzone" id="dropzone">
+    📂 여기로 .zip 파일을 드래그하거나 클릭하여 업로드하세요
+    <form id="upload-form" action="/" method="POST" enctype="multipart/form-data">
+      <input type="file"
+             name="file"
+             id="file-input"
+             accept=".zip"
+             style="display:none;"
+             required>
+    </form>
+  </div>
 
-    {% if result %}
-        <h3>🔎 분석 결과:</h3>
-        <pre style="background:#f5f5f5; padding:10px;">{{ result }}</pre>
+  <!-- 분석 결과 영역 -->
+  {% if results is not none %}
+    <h3>🔎 분석 결과:</h3>
+
+    {% if results|length == 0 %}
+      <p style="color:#b33;">
+        🔶 ZIP 안에 실행(.exe/.dll) 파일이 없거나 분석 대상이 없습니다.
+      </p>
+
+    {% else %}
+      {% for res in results %}
+        <div class="result-item">
+          {% if res.filename %}
+            <p><strong>파일:</strong> {{ res.filename }}</p>
+          {% endif %}
+          {% if res.sha256 %}
+            <p><strong>SHA256:</strong> {{ res.sha256 }}</p>
+          {% endif %}
+          <p>
+            <strong>결과:</strong>
+            {% if res.label.startswith('🔴') %}
+              <span class="malicious">{{ res.label }}</span>
+            {% else %}
+              <span class="benign">{{ res.label }}</span>
+            {% endif %}
+          </p>
+          <p><strong>세부:</strong> {{ res.detail }}</p>
+        </div>
+      {% endfor %}
     {% endif %}
 
-    <script>
-        const dropzone = document.getElementById('dropzone');
-        const fileInput = document.getElementById('file-input');
-        const form = document.getElementById('upload-form');
+  {% endif %}
 
-        dropzone.addEventListener('click', () => fileInput.click());
-        fileInput.addEventListener('change', () => form.submit());
+  <script>
+    const dropzone = document.getElementById("dropzone");
+    const fileInput = document.getElementById("file-input");
+    const form = document.getElementById("upload-form");
 
-        dropzone.addEventListener('dragover', e => {
-            e.preventDefault();
-            dropzone.classList.add('dragover');
-        });
+    // 클릭 시 파일 선택창 열기
+    dropzone.addEventListener("click", () => fileInput.click());
 
-        dropzone.addEventListener('dragleave', () => {
-            dropzone.classList.remove('dragover');
-        });
+    // 파일 선택 시 자동 폼 제출
+    fileInput.addEventListener("change", () => form.submit());
 
-        dropzone.addEventListener('drop', e => {
-            e.preventDefault();
-            dropzone.classList.remove('dragover');
-            const files = e.dataTransfer.files;
-            if (files.length > 0) {
-                fileInput.files = files;
-                form.submit();
-            }
-        });
-    </script>
+    // 드래그 앤 드롭 처리
+    dropzone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropzone.classList.add("dragover");
+    });
+    dropzone.addEventListener("dragleave", () => {
+      dropzone.classList.remove("dragover");
+    });
+    dropzone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropzone.classList.remove("dragover");
+      const files = e.dataTransfer.files;
+      if (files.length > 0) {
+        fileInput.files = files;
+        form.submit();
+      }
+    });
+  </script>
 </body>
 </html>
