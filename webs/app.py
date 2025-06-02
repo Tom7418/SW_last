@@ -1,64 +1,76 @@
-from flask import Flask, request, render_template
+import sys
 import os
-import zipfile
-import hashlib
-import json
+
+# ✅ features.py 경로 강제 삽입
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../models/ember/ember")))
+
+from flask import Flask, request, render_template
+from werkzeug.utils import secure_filename
+import joblib
+from features import PEFeatureExtractor
+import features
+
+print("🧠 로딩된 features.py 경로:", features.__file__)
 
 app = Flask(__name__)
-UPLOAD_FOLDER = 'temp/'
-HASH_DB_PATH = 'malicious_hashes.json'
+UPLOAD_FOLDER = "uploads"
+MODEL_PATH = "converted/malware_model.pkl"
 
+# 📁 폴더 생성
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-# 악성 해시 DB 불러오기
-with open(HASH_DB_PATH, 'r') as f:
-    malicious_hashes = json.load(f)
+# 🧠 모델 로딩
+try:
+    model = joblib.load(MODEL_PATH)
+    extractor = PEFeatureExtractor(feature_version=2)
+    print("✅ 모델 로딩 완료")
+except Exception as e:
+    model = None
+    print(f"❌ 모델 로딩 실패: {e}")
 
-# 확장자 목록 (.vir 포함)
-target_extensions = (".exe", ".dll", ".exe.vir", ".vir")
-
-# ZIP 분석 함수 (암호 포함 + 메모리 처리)
-def analyze_zip_memory(file_path, password=b'infected'):
-    results = []
-    try:
-        with zipfile.ZipFile(file_path, 'r') as zip_ref:
-            zip_ref.setpassword(password)
-            for info in zip_ref.infolist():
-                if info.filename.endswith(target_extensions):
-                    try:
-                        with zip_ref.open(info) as f_in:
-                            file_bytes = f_in.read()
-                            file_hash = hashlib.sha256(file_bytes).hexdigest()
-                            verdict = malicious_hashes.get(file_hash, "🟢 정상 파일")
-                            display = f"{info.filename}\n  SHA256: {file_hash}\n  결과: {'🔴 ' + verdict if verdict != '🟢 정상 파일' else verdict}"
-                            results.append(display)
-                    except RuntimeError as e:
-                        if "password required" in str(e).lower():
-                            results.append(f"{info.filename} → 🔒 암호로 보호된 파일 (분석 실패)")
-                        else:
-                            results.append(f"{info.filename} → ⚠️ 오류: {str(e)}")
-    except Exception as e:
-        results.append(f"❌ 전체 ZIP 분석 실패: {str(e)}")
-    
-    return results
+# ✅ 누적 검사 결과 리스트
+scan_history = []
 
 @app.route("/", methods=["GET", "POST"])
-def upload():
+def index():
     result = ""
     if request.method == "POST":
-        file = request.files["file"]
-        if not file or not file.filename.endswith(".zip"):
-            result = "❌ .zip 파일만 업로드 가능합니다."
+        file = request.files.get("file")
+        if not file or not file.filename.endswith(".exe"):
+            result = "❌ .exe 파일만 업로드 가능합니다."
         else:
-            zip_path = os.path.join(UPLOAD_FOLDER, file.filename)
-            file.save(zip_path)
+            try:
+                filename = secure_filename(file.filename)
+                save_path = os.path.join(UPLOAD_FOLDER, filename)
+                file.save(save_path)
 
-            result_lines = analyze_zip_memory(zip_path)
-            result = "\n\n".join(result_lines)
-            print("🔎 분석 결과:\n", result)
+                with open(save_path, "rb") as f:
+                    bytez = f.read()
+                raw = extractor.raw_features(bytez)
+                vector = extractor.process_raw_features(raw).reshape(1, -1)
 
-            os.remove(zip_path)
-    return render_template("index.html", result=result)
+                pred = model.predict(vector)[0]
+                verdict = "🔴 악성코드" if pred == 1 else "🟢 정상"
+                result = f"{filename} → {verdict}"
+
+                # ✅ 누적 리스트에 추가 (최신이 위로)
+                scan_history.insert(0, result)
+
+            except Exception as e:
+                result = f"⚠️ 분석 중 오류 발생: {str(e)}"
+            finally:
+                if os.path.exists(save_path):
+                    os.remove(save_path)
+
+    return render_template("index.html", result=result, history=scan_history)
+
+@app.route("/model-status")
+def model_status():
+    try:
+        _ = model.predict([[0]*model.n_features_in_])
+        return "✅ 모델 정상 작동 중"
+    except Exception as e:
+        return f"❌ 모델 문제 발생: {e}"
 
 if __name__ == "__main__":
     app.run(debug=True)

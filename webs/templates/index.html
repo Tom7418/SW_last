@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>🧠 AI 악성코드 탐지기</title>
+</head>
+<body>
+    <h1>🔍 AI 기반 악성코드 탐지기</h1>
+    <form method="POST" enctype="multipart/form-data">
+        <input type="file" name="file" accept=".exe" required>
+        <button type="submit">업로드 및 분석</button>
+    </form>
+
+    <br>
+    <form action="/model-status">
+        <button type="submit">🧠 모델 상태 확인</button>
+    </form>
+
+    {% if result %}
+    <h2>📌 분석 결과:</h2>
+    <p style="font-size: 18px;">{{ result }}</p>
+    {% endif %}
+    {% if result %}
+  <h2>📌 이번 검사 결과:</h2>
+  <p style="font-size: 18px;">{{ result }}</p>
+{% endif %}
+
+{% if history %}
+  <h3>🧾 누적 검사 결과:</h3>
+  <ul>
+    {% for entry in history %}
+      <li>{{ entry }}</li>
+    {% endfor %}
+  </ul>
+{% endif %}
+</body>
+</html>
