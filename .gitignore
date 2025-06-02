@@ -6,3 +6,5 @@ venv310/
 *.dat
 .venv/
 __pycache__/
+jsons/
+converted/
