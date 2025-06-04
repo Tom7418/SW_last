@@ -6,6 +6,7 @@
 명령어로 하려면 git pull origin main하면 됩니다.  
   
 랜섬웨어가 저장되어 있는곳 : https://github.com/ytisf/theZoo/tree/master/malware/Binaries  
+api를 통해 악성코드를 받을 수 있는곳 : https://malshare.com/
 
 ### 주의 이 모든것은 가상환경에서 이루어집니다. 절대 가상환경 외에 실행 X  
 가상환경을 생성 깃허브 연결 폴더 경로에 python -m venv .venv  \
