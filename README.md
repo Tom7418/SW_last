@@ -6,7 +6,7 @@
 명령어로 하려면 git pull origin main하면 됩니다.  
   
 랜섬웨어가 저장되어 있는곳 : https://github.com/ytisf/theZoo/tree/master/malware/Binaries  
-api를 통해 악성코드를 받을 수 있는곳 : https://malshare.com/
+api를 통해 악성코드를 받을 수 있는곳 : https://malshare.com/  
 악성 데이터 수집하는 곳 :  https://bazaar.abuse.ch/browse/
 
 ### 주의 이 모든것은 가상환경에서 이루어집니다. 절대 가상환경 외에 실행 X  
