@@ -17,3 +17,5 @@ api를 통해 악성코드를 받을 수 있는곳 : https://malshare.com/
 연결폴더\ember 경로에서 pip install . 실행 후 cd.. 한 후  python test_ember.py 실행하여 ember가 제대로 작동하는지 확인  
 
 모델학습 실행 명령어 : python train_model.py  
+
+venv에서 각 실행파일을
