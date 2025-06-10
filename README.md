@@ -20,3 +20,4 @@ api를 통해 악성코드를 받을 수 있는곳 : https://malshare.com/
 모델학습 실행 명령어 : python train_model.py  
 
 venv에서 악성코드zip파일을 json으로 변환하려 할 경우
+압축이 풀리는데 이때 실컴퓨터에 압축이 풀림
